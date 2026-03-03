@@ -2,7 +2,7 @@
 
 > **Control your windows with elegance — no grabbing borders, no dragging the title bar.**
 
-WindowsResize is a lightweight utility for **Windows**, written in **C++20**, that runs quietly in the background and turns any keyboard shortcut into a powerful window move and resize command — inspired by the classic shortcuts from **Ubuntu/GNOME**.
+WindowsResize is a lightweight utility for **Windows**, written in **C++20**, that runs quietly in the background and turns any keyboard shortcut into a powerful window move and resize command — inspired by the classic utility from **Ubuntu/GNOME**.
 
 ---
 
@@ -207,6 +207,6 @@ cmake --build build
 
 <div align="center">
 
-Made with 💜 in C++20 for Windows
+Made with 💜 in C++20 for Windows, powered by lots of ☕ 
 
 </div>
