@@ -1,0 +1,5 @@
+// resource.rc
+#include "resource.hpp"
+
+// The ID number, resource type (ICON), and file name for the icon resource
+IDI_APP_ICON ICON "../assets/icons/favicon.ico"
