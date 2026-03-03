@@ -1,0 +1,49 @@
+# CMake
+build/
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# Binaries
+*.exe
+*.dll
+*.lib
+*.obj
+*.o
+*.a
+*.pdb
+*.ilk
+*.exp
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.suo
+*.sln
+*.user
+*.db
+*.opendb
+*.vs/
+CMakeSettings.json
+CMakePresets.json
+
+# Ninja
+.ninja_deps
+.ninja_log
+build.ninja
+rules.ninja
+
+# MinGW
+*.manifest
+
+# Other
+AGENTS.md
+.agents/
+.codex/
