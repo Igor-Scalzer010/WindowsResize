@@ -47,3 +47,4 @@ rules.ninja
 AGENTS.md
 .agents/
 .codex/
+.gemini/
