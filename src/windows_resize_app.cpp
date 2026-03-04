@@ -100,10 +100,10 @@ public:
         data_.cbSize = sizeof(data_);
         data_.hWnd = owner_window_;
         data_.uID = kTrayIconId;
-        data_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+        data_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP;
         data_.uCallbackMessage = kTrayCallbackMessage;
         data_.hIcon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_APP_ICON));
-        wcscpy_s(data_.szTip, L"WindowsResize em execucao");
+        wcscpy_s(data_.szTip, L"WindowsResize");
 
         if (Shell_NotifyIconW(NIM_ADD, &data_) == 0) {
             return false;
@@ -111,6 +111,13 @@ public:
 
         data_.uVersion = NOTIFYICON_VERSION_4;
         Shell_NotifyIconW(NIM_SETVERSION, &data_);
+
+        // NIM_SETVERSION can cause the shell to discard previously-set fields
+        // (including szTip) when switching to NOTIFYICON_VERSION_4 semantics.
+        // A NIM_MODIFY with NIF_TIP re-applies them under the new version.
+        data_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP;
+        Shell_NotifyIconW(NIM_MODIFY, &data_);
+
         added_ = true;
         return true;
     }
