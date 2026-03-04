@@ -26,7 +26,7 @@ That simple. Works with **any window** on the system.
 |---|---|
 | 🔄 **Move windows** | Moves the active window using the mouse, without clicking on the title bar |
 | ↔️ **Resize windows** | Resizes the window from the edge closest to the cursor |
-| 🖥️ **System tray** | Tray icon indicates the app is active |
+| 🖥️ **System tray** | Tray icon indicates the app is active and shows the app name on hover |
 | ⚡ **High frequency** | Updates at ~125Hz (every 8ms) for ultra-smooth movement |
 | 🪶 **Lightweight and discreet** | Hidden window, no UI, zero performance impact |
 | 🔁 **Auto-restore** | Minimized or maximized windows are restored before interaction |
@@ -161,8 +161,6 @@ The resized edge is always the **one closest to the cursor** — making the beha
 ---
 
 ## 🖥️ System Tray
-
-The system tray icon confirms the app is active and running.
 
 | Action | Result |
 |---|---|
