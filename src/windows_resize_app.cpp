@@ -222,7 +222,10 @@ bool WindowsResizeApp::InitializeHotkeys() {
         UINT modifiers;
         UINT virtual_key;
     };
-
+    
+    // Using a constexpr array to define hotkey configurations for better readability and maintainability.
+    // This also allows for easy modification of hotkeys in the future without changing the logic of registration.
+    // The hotkeys are defined with a combination of ALT and optional SHIFT modifiers, and mapped to '1', '2', and 'Q' keys for move, resize, and quit actions respectively.
     constexpr std::array<HotkeyConfig, 3> kHotkeys{{
         {kHotkeyMove, MOD_ALT | MOD_NOREPEAT, '1'},
         {kHotkeyResize, MOD_ALT | MOD_NOREPEAT, '2'},
