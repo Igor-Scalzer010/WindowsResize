@@ -35,9 +35,12 @@ public:
 private:
     struct InteractionState;
     class ScopedHotkey;
+    class MoveInteractionHooks;
     class TrayIcon;
 
     static LRESULT CALLBACK WindowProcRouter(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
+    static LRESULT CALLBACK MoveMouseHookProc(int code, WPARAM wparam, LPARAM lparam);
+    static LRESULT CALLBACK MoveKeyboardHookProc(int code, WPARAM wparam, LPARAM lparam);
     LRESULT WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 
     bool RegisterWindowClass() const;
@@ -52,6 +55,7 @@ private:
     void StartInteraction(InteractionMode mode);
     void StopInteraction() noexcept;
     void OnTick();
+    void OnMoveCursor();
     bool IsCancelRequested() const;
 
     bool IsValidTargetWindow(HWND hwnd) const;
@@ -63,5 +67,8 @@ private:
     UINT taskbar_created_message_{};
     std::unique_ptr<TrayIcon> tray_icon_{};
     std::vector<std::unique_ptr<ScopedHotkey>> hotkeys_{};
+    std::unique_ptr<MoveInteractionHooks> move_interaction_hooks_{};
     std::unique_ptr<InteractionState> interaction_state_{};
+    POINT latest_move_cursor_{};
+    bool move_cursor_message_pending_{};
 };

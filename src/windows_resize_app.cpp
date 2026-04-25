@@ -11,8 +11,10 @@
 // anonymous constexprs and helper functions 
 namespace {
 constexpr UINT_PTR kTickTimerId = 1;
-constexpr UINT kTickIntervalMs = 8;
+constexpr UINT kResizeTickIntervalMs = 8;
 constexpr UINT kTrayCallbackMessage = WM_APP + 1;
+constexpr UINT kMoveCursorMessage = WM_APP + 2;
+constexpr UINT kMoveCancelMessage = WM_APP + 3;
 
 constexpr int kHotkeyMove = 1;
 constexpr int kHotkeyResize = 2;
@@ -25,6 +27,8 @@ constexpr wchar_t kWindowClassName[] = L"WindowsResizeMessageWindow";
 [[nodiscard]] bool IsPressed(const int virtual_key) {
     return (GetAsyncKeyState(virtual_key) & 0x8000) != 0;
 }
+
+WindowsResizeApp* g_move_hook_owner = nullptr;
 }  // final namespace
 
 struct WindowsResizeApp::InteractionState {
@@ -158,6 +162,60 @@ private:
     HWND owner_window_{};
     NOTIFYICONDATAW data_{};
     bool added_{};
+};
+
+class WindowsResizeApp::MoveInteractionHooks final {
+public:
+    explicit MoveInteractionHooks(WindowsResizeApp& owner) : owner_(owner) {
+        if (g_move_hook_owner != nullptr) {
+            return;
+        }
+
+        g_move_hook_owner = &owner_;
+
+        mouse_hook_ = SetWindowsHookExW(WH_MOUSE_LL, &WindowsResizeApp::MoveMouseHookProc, owner_.instance_, 0);
+        if (mouse_hook_ == nullptr) {
+            g_move_hook_owner = nullptr;
+            return;
+        }
+
+        keyboard_hook_ =
+            SetWindowsHookExW(WH_KEYBOARD_LL, &WindowsResizeApp::MoveKeyboardHookProc, owner_.instance_, 0);
+        if (keyboard_hook_ == nullptr) {
+            UnhookWindowsHookEx(mouse_hook_);
+            mouse_hook_ = nullptr;
+            g_move_hook_owner = nullptr;
+        }
+    }
+
+    ~MoveInteractionHooks() {
+        if (g_move_hook_owner == &owner_) {
+            g_move_hook_owner = nullptr;
+        }
+
+        if (keyboard_hook_ != nullptr) {
+            UnhookWindowsHookEx(keyboard_hook_);
+        }
+
+        if (mouse_hook_ != nullptr) {
+            UnhookWindowsHookEx(mouse_hook_);
+        }
+    }
+
+    MoveInteractionHooks(const MoveInteractionHooks&) = delete;
+    MoveInteractionHooks& operator=(const MoveInteractionHooks&) = delete;
+
+    MoveInteractionHooks(MoveInteractionHooks&&) = delete;
+    MoveInteractionHooks& operator=(MoveInteractionHooks&&) = delete;
+
+    [[nodiscard]] bool IsActive() const noexcept {
+        return mouse_hook_ != nullptr && keyboard_hook_ != nullptr;
+    }
+
+private:
+    WindowsResizeApp& owner_;
+    HHOOK mouse_hook_{};
+    HHOOK keyboard_hook_{};
 };
 
 WindowsResizeApp::WindowsResizeApp(HINSTANCE instance) : instance_(instance) {}
@@ -294,6 +352,12 @@ LRESULT WindowsResizeApp::WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM 
                 OnTick();
             }
             return 0;
+        case kMoveCursorMessage:
+            OnMoveCursor();
+            return 0;
+        case kMoveCancelMessage:
+            StopInteraction();
+            return 0;
         case kTrayCallbackMessage:
             return OnTrayEvent(lparam);
         case WM_DESTROY:
@@ -394,15 +458,31 @@ void WindowsResizeApp::StartInteraction(InteractionMode mode) {
         state->resize_from_top = cursor.y < center_y;
     }
 
+    StopInteraction();
     interaction_state_ = std::move(state);
-    SetTimer(message_window_, kTickTimerId, kTickIntervalMs, nullptr);
+    latest_move_cursor_ = cursor;
+    move_cursor_message_pending_ = false;
+    SetTimer(message_window_, kTickTimerId, kResizeTickIntervalMs, nullptr);
+
+    if (mode != InteractionMode::Move) {
+        return;
+    }
+
+    auto move_hooks = std::make_unique<MoveInteractionHooks>(*this);
+    if (move_hooks->IsActive()) {
+        move_interaction_hooks_ = std::move(move_hooks);
+    }
 }
 
 void WindowsResizeApp::StopInteraction() noexcept {
-    if (interaction_state_) {
+    if (message_window_ != nullptr) {
         KillTimer(message_window_, kTickTimerId);
-        interaction_state_.reset();
     }
+
+    move_interaction_hooks_.reset();
+    interaction_state_.reset();
+    move_cursor_message_pending_ = false;
+    latest_move_cursor_ = {};
 }
 
 void WindowsResizeApp::OnTick() {
@@ -421,22 +501,88 @@ void WindowsResizeApp::OnTick() {
         return;
     }
 
+    if (state.mode == InteractionMode::Move) {
+        if (move_interaction_hooks_) {
+            return;
+        }
+
+        POINT cursor{};
+        if (GetCursorPos(&cursor) == 0) {
+            StopInteraction();
+            return;
+        }
+
+        ApplyMove(state, cursor);
+        return;
+    }
+
     POINT cursor{};
     if (GetCursorPos(&cursor) == 0) {
         StopInteraction();
         return;
     }
 
-    if (state.mode == InteractionMode::Move) {
-        ApplyMove(state, cursor);
+    ApplyResize(state, cursor);
+}
+
+void WindowsResizeApp::OnMoveCursor() {
+    move_cursor_message_pending_ = false;
+
+    if (!interaction_state_ || interaction_state_->mode != InteractionMode::Move) {
         return;
     }
 
-    ApplyResize(state, cursor);
+    auto& state = *interaction_state_;
+    if (!IsValidTargetWindow(state.target_window)) {
+        StopInteraction();
+        return;
+    }
+
+    if (IsCancelRequested()) {
+        StopInteraction();
+        return;
+    }
+
+    ApplyMove(state, latest_move_cursor_);
 }
 
 bool WindowsResizeApp::IsCancelRequested() const {
     return IsPressed(VK_ESCAPE);
+}
+
+LRESULT CALLBACK WindowsResizeApp::MoveMouseHookProc(const int code, const WPARAM wparam, const LPARAM lparam) {
+    if (code < 0) {
+        return CallNextHookEx(nullptr, code, wparam, lparam);
+    }
+
+    auto* owner = g_move_hook_owner;
+    if (owner != nullptr && wparam == WM_MOUSEMOVE) {
+        const auto* mouse_info = reinterpret_cast<const MSLLHOOKSTRUCT*>(lparam);
+        owner->latest_move_cursor_ = mouse_info->pt;
+
+        if (!owner->move_cursor_message_pending_) {
+            owner->move_cursor_message_pending_ = true;
+            PostMessageW(owner->message_window_, kMoveCursorMessage, 0, 0);
+        }
+    }
+
+    return CallNextHookEx(nullptr, code, wparam, lparam);
+}
+
+LRESULT CALLBACK WindowsResizeApp::MoveKeyboardHookProc(const int code, const WPARAM wparam, const LPARAM lparam) {
+    if (code < 0) {
+        return CallNextHookEx(nullptr, code, wparam, lparam);
+    }
+
+    auto* owner = g_move_hook_owner;
+    if (owner != nullptr && (wparam == WM_KEYDOWN || wparam == WM_SYSKEYDOWN)) {
+        const auto* keyboard_info = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lparam);
+        if (keyboard_info->vkCode == VK_ESCAPE) {
+            PostMessageW(owner->message_window_, kMoveCancelMessage, 0, 0);
+        }
+    }
+
+    return CallNextHookEx(nullptr, code, wparam, lparam);
 }
 
 void WindowsResizeApp::ApplyMove(const InteractionState& state, const POINT& cursor) const {
