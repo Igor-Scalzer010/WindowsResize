@@ -27,7 +27,7 @@ That simple. Works with **any window** on the system.
 | 🔄 **Move windows** | Moves the active window using the mouse, without clicking on the title bar |
 | ↔️ **Resize windows** | Resizes the window from the edge closest to the cursor |
 | 🖥️ **System tray** | Tray icon indicates the app is active and shows the app name on hover |
-| ⚡ **High frequency** | Updates at ~125Hz (every 8ms) for ultra-smooth movement |
+| ⚡ **Responsive interactions** | `Alt + 1` follows real mouse input for smoother native-like movement, while `Alt + 2` keeps the existing resize behavior |
 | 🪶 **Lightweight and discreet** | Hidden window, no UI, zero performance impact |
 | 🔁 **Auto-restore** | Minimized or maximized windows are restored before interaction |
 
@@ -114,7 +114,7 @@ flowchart TD
     E --> F["📍 Capture cursor position\nand window dimensions"]
     F --> G{Selected mode}
 
-    G -- Alt+1\nMove --> H["🔄 Apply cursor delta\nto window position"]
+    G -- Alt+1\nMove --> H["🔄 Update window position\nfrom real mouse movement"]
     G -- Alt+2\nResize --> I["🧭 Detect quadrant\n(cursor vs. window center)"]
     I --> J["↔️ Expand/shrink the\nclosest edge to cursor"]
 
@@ -156,7 +156,7 @@ quadrantChart
     Cursor: [0.75, 0.75]
 ```
 
-The resized edge is always the **one closest to the cursor** — making the behavior intuitive and non-destructive. The app also enforces minimum dimensions of **120 × 80 pixels**.
+The resized edge is always the **one closest to the cursor** — making the behavior intuitive and non-destructive. This resize path keeps the existing behavior, while move mode (`Alt + 1`) now tracks using real mouse input for smoother motion. The app also enforces minimum dimensions of **120 × 80 pixels**.
 
 ---
 
