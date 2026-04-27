@@ -28,6 +28,90 @@ constexpr wchar_t kWindowClassName[] = L"WindowsResizeMessageWindow";
     return (GetAsyncKeyState(virtual_key) & 0x8000) != 0;
 }
 
+class ScopedMenu final {
+public:
+    explicit ScopedMenu(HMENU menu) noexcept : menu_(menu) {}
+
+    ~ScopedMenu() {
+        if (menu_ != nullptr) {
+            DestroyMenu(menu_);
+        }
+    }
+
+    ScopedMenu(const ScopedMenu&) = delete;
+    ScopedMenu& operator=(const ScopedMenu&) = delete;
+
+    ScopedMenu(ScopedMenu&& other) noexcept : menu_(std::exchange(other.menu_, nullptr)) {}
+
+    ScopedMenu& operator=(ScopedMenu&& other) noexcept {
+        if (this == &other) {
+            return *this;
+        }
+
+        if (menu_ != nullptr) {
+            DestroyMenu(menu_);
+        }
+
+        menu_ = std::exchange(other.menu_, nullptr);
+        return *this;
+    }
+
+    [[nodiscard]] HMENU Get() const noexcept {
+        return menu_;
+    }
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return menu_ != nullptr;
+    }
+
+private:
+    HMENU menu_{};
+};
+
+class ScopedWindowsHook final {
+public:
+    ScopedWindowsHook() = default;
+
+    explicit ScopedWindowsHook(HHOOK hook) noexcept : hook_(hook) {}
+
+    ~ScopedWindowsHook() {
+        Reset();
+    }
+
+    ScopedWindowsHook(const ScopedWindowsHook&) = delete;
+    ScopedWindowsHook& operator=(const ScopedWindowsHook&) = delete;
+
+    ScopedWindowsHook(ScopedWindowsHook&& other) noexcept : hook_(std::exchange(other.hook_, nullptr)) {}
+
+    ScopedWindowsHook& operator=(ScopedWindowsHook&& other) noexcept {
+        if (this == &other) {
+            return *this;
+        }
+
+        Reset(std::exchange(other.hook_, nullptr));
+        return *this;
+    }
+
+    void Reset(HHOOK hook = nullptr) noexcept {
+        if (hook_ != nullptr) {
+            UnhookWindowsHookEx(hook_);
+        }
+
+        hook_ = hook;
+    }
+
+    [[nodiscard]] HHOOK Get() const noexcept {
+        return hook_;
+    }
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return hook_ != nullptr;
+    }
+
+private:
+    HHOOK hook_{};
+};
+
 WindowsResizeApp* g_move_hook_owner = nullptr;
 }  // final namespace
 
@@ -141,21 +225,19 @@ public:
     }
 
     void ShowContextMenu() const {
-        HMENU menu = CreatePopupMenu();
-        if (menu == nullptr) {
+        ScopedMenu menu{CreatePopupMenu()};
+        if (!menu) {
             return;
         }
 
-        AppendMenuW(menu, MF_STRING, kTrayMenuExitId, L"Exit");
+        AppendMenuW(menu.Get(), MF_STRING, kTrayMenuExitId, L"Exit");
 
         POINT cursor{};
         if (GetCursorPos(&cursor) != 0) {
             SetForegroundWindow(owner_window_);
-            TrackPopupMenu(menu, TPM_LEFTALIGN | TPM_BOTTOMALIGN, cursor.x, cursor.y, 0, owner_window_, nullptr);
+            TrackPopupMenu(menu.Get(), TPM_LEFTALIGN | TPM_BOTTOMALIGN, cursor.x, cursor.y, 0, owner_window_, nullptr);
             PostMessageW(owner_window_, WM_NULL, 0, 0);
         }
-
-        DestroyMenu(menu);
     }
 
 private:
@@ -173,17 +255,16 @@ public:
 
         g_move_hook_owner = &owner_;
 
-        mouse_hook_ = SetWindowsHookExW(WH_MOUSE_LL, &WindowsResizeApp::MoveMouseHookProc, owner_.instance_, 0);
-        if (mouse_hook_ == nullptr) {
+        mouse_hook_.Reset(SetWindowsHookExW(WH_MOUSE_LL, &WindowsResizeApp::MoveMouseHookProc, owner_.instance_, 0));
+        if (!mouse_hook_) {
             g_move_hook_owner = nullptr;
             return;
         }
 
-        keyboard_hook_ =
-            SetWindowsHookExW(WH_KEYBOARD_LL, &WindowsResizeApp::MoveKeyboardHookProc, owner_.instance_, 0);
-        if (keyboard_hook_ == nullptr) {
-            UnhookWindowsHookEx(mouse_hook_);
-            mouse_hook_ = nullptr;
+        keyboard_hook_.Reset(
+            SetWindowsHookExW(WH_KEYBOARD_LL, &WindowsResizeApp::MoveKeyboardHookProc, owner_.instance_, 0));
+        if (!keyboard_hook_) {
+            mouse_hook_.Reset();
             g_move_hook_owner = nullptr;
         }
     }
@@ -193,13 +274,8 @@ public:
             g_move_hook_owner = nullptr;
         }
 
-        if (keyboard_hook_ != nullptr) {
-            UnhookWindowsHookEx(keyboard_hook_);
-        }
-
-        if (mouse_hook_ != nullptr) {
-            UnhookWindowsHookEx(mouse_hook_);
-        }
+        keyboard_hook_.Reset();
+        mouse_hook_.Reset();
     }
 
     MoveInteractionHooks(const MoveInteractionHooks&) = delete;
@@ -209,13 +285,13 @@ public:
     MoveInteractionHooks& operator=(MoveInteractionHooks&&) = delete;
 
     [[nodiscard]] bool IsActive() const noexcept {
-        return mouse_hook_ != nullptr && keyboard_hook_ != nullptr;
+        return static_cast<bool>(mouse_hook_) && static_cast<bool>(keyboard_hook_);
     }
 
 private:
     WindowsResizeApp& owner_;
-    HHOOK mouse_hook_{};
-    HHOOK keyboard_hook_{};
+    ScopedWindowsHook mouse_hook_{};
+    ScopedWindowsHook keyboard_hook_{};
 };
 
 WindowsResizeApp::WindowsResizeApp(HINSTANCE instance) : instance_(instance) {}
